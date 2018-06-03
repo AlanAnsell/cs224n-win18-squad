@@ -112,7 +112,11 @@ class QAModel(object):
         with vs.variable_scope("embeddings"):
 
             # Note: the embedding matrix is a tf.constant which means it's not a trainable parameter
-            embedding_matrix = tf.constant(emb_matrix, dtype=tf.float32, name="emb_matrix") # shape (400002, embedding_size)
+            variable_embeddings = tf.Variable(emb_matrix[:self.FLAGS.n_variable_embeddings, :],
+                                              dtype=tf.float32, name='variable_embs')
+            constant_embeddings = tf.constant(emb_matrix[self.FLAGS.n_variable_embeddings:, ],
+                                              dtype=tf.float32, name="const_matrix")
+            embedding_matrix = tf.concat([variable_embeddings, constant_embeddings], axis=0) # shape (400002, embedding_size)
 
             # Get the word embeddings for the context and question,
             # using the placeholders self.context_ids and self.qn_ids
