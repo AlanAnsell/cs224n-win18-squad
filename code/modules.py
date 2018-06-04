@@ -115,6 +115,42 @@ class SimpleSoftmaxLayer(object):
             return masked_logits, prob_dist
 
 
+class WeightedSoftmax(object):
+    """
+    Module to take set of hidden states, (e.g. one for each context location),
+    and return probability distribution over those states.
+    """
+
+    def __init__(self, n_weights):
+        self.n_weights = n_weights
+
+    def build_graph(self, inputs, masks):
+        """
+        Applies one linear downprojection layer, then softmax.
+
+        Inputs:
+          inputs: Tensor shape (batch_size, seq_len, hidden_size)
+          masks: Tensor shape (batch_size, seq_len)
+            Has 1s where there is real input, 0s where there's padding.
+
+        Outputs:
+          logits: Tensor shape (batch_size, seq_len)
+            logits is the result of the downprojection layer, but it has -1e30
+            (i.e. very large negative number) in the padded locations
+          prob_dist: Tensor shape (batch_size, seq_len)
+            The result of taking softmax over logits.
+            This should have 0 in the padded locations, and the rest should sum to 1.
+        """
+        with vs.variable_scope("WeightedSoftmax"):
+            w = tf.get_variable('w', shape=(1, 1, self.n_weights), dtype=tf.float32, initializer=tf.ones_initializer())
+            logits = tf.reduce_sum(w * inputs, axis=2)
+
+            # Take softmax over sequence
+            masked_logits, prob_dist = masked_softmax(logits, masks, 1)
+
+            return masked_logits, prob_dist
+
+
 class BasicAttn(object):
     """Module for basic attention.
 

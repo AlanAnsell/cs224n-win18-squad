@@ -30,7 +30,7 @@ from tensorflow.python.ops import embedding_ops
 from evaluate import exact_match_score, f1_score
 from data_batcher import get_batch_generator
 from pretty_print import print_example
-from modules import RNNEncoder, SimpleSoftmaxLayer, BDAttn
+from modules import RNNEncoder, WeightedSoftmax, BDAttn
 
 logging.basicConfig(level=logging.INFO)
 
@@ -160,19 +160,23 @@ class QAModel(object):
         # Apply fully connected layer to each blended representation
         # Note, blended_reps_final corresponds to b' in the handout
         # Note, tf.contrib.layers.fully_connected applies a ReLU non-linarity here by default
-        final_reps = tf.contrib.layers.fully_connected(layer2_reps, num_outputs=self.FLAGS.hidden_size) # blended_reps_final is shape (batch_size, context_len, hidden_size)
+        #final_reps = tf.contrib.layers.fully_connected(layer2_reps, num_outputs=self.FLAGS.hidden_size) # blended_reps_final is shape (batch_size, context_len, hidden_size)
 
         # Use softmax layer to compute probability distribution for start location
         # Note this produces self.logits_start and self.probdist_start, both of which have shape (batch_size, context_len)
         with vs.variable_scope("StartDist"):
-            softmax_layer_start = SimpleSoftmaxLayer()
-            self.logits_start, self.probdist_start = softmax_layer_start.build_graph(final_reps, self.context_mask)
+            softmax_start = WeightedSoftmax(10 * self.FLAGS.hidden_size)
+            start_dist_reps = tf.concat([blended_reps, layer2_reps], axis=2)
+            self.logits_start, self.probdist_start = softmax_start.build_graph(start_dist_reps, self.context_mask)
 
         # Use softmax layer to compute probability distribution for end location
         # Note this produces self.logits_end and self.probdist_end, both of which have shape (batch_size, context_len)
         with vs.variable_scope("EndDist"):
-            softmax_layer_end = SimpleSoftmaxLayer()
-            self.logits_end, self.probdist_end = softmax_layer_end.build_graph(final_reps, self.context_mask)
+            encoder = RNNEncoder(self.FLAGS.hidden_size, self.keep_prob)
+            end_dist_reps = encoder.build_graph(layer2_reps, self.context_mask)
+            end_dist_reps = tf.concat([blended_reps, end_dist_reps], axis=2)
+            softmax_end = WeightedSoftmax(10 * self.FLAGS.hidden_size)
+            self.logits_end, self.probdist_end = softmax_end.build_graph(end_dist_reps, self.context_mask)
 
 
     def add_loss(self):
