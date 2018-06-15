@@ -142,15 +142,12 @@ class QAModel(object):
         context_hiddens = encoder.build_graph(self.context_embs, self.context_mask) # (batch_size, context_len, hidden_size*2)
         question_hiddens = encoder.build_graph(self.qn_embs, self.qn_mask) # (batch_size, question_len, hidden_size*2)
 
+        attn_layer = BDAttn(self.keep_prob, self.FLAGS.hidden_size*2, self.FLAGS.hidden_size*2)
+        attn_output = attn_layer.build_graph(question_hiddens, self.qn_mask, context_hiddens, self.context_mask) # attn_output is shape (batch_size, context_len, hidden_size*6)
+        blended_reps = tf.concat([context_hiddens, attn_output], axis=2) # (batch_size, context_len, hidden_size*8)
         # Use context hidden states to attend to question hidden states
         #attn_layer = BasicAttn(self.keep_prob, self.FLAGS.hidden_size*2, self.FLAGS.hidden_size*2)
         #_, attn_output = attn_layer.build_graph(question_hiddens, self.qn_mask, context_hiddens) # attn_output is shape (batch_size, context_len, hidden_size*2)
-        attn_layer = BDAttn(self.keep_prob, self.FLAGS.hidden_size*2, self.FLAGS.hidden_size*2)
-        attn_output = attn_layer.build_graph(question_hiddens, self.qn_mask, context_hiddens, self.context_mask) # attn_output is shape (batch_size, context_len, hidden_size*6)
-
-        # Concat attn_output to context_hiddens to get blended_reps
-        blended_reps = tf.concat([context_hiddens, attn_output], axis=2) # (batch_size, context_len, hidden_size*8)
-        print 'blended_reps: ' + str(blended_reps.shape)
         with vs.variable_scope('layer1'):
             encoder = RNNEncoder(self.FLAGS.hidden_size, self.keep_prob)
             layer1_reps = encoder.build_graph(blended_reps, self.context_mask)
@@ -161,6 +158,7 @@ class QAModel(object):
         # Note, blended_reps_final corresponds to b' in the handout
         # Note, tf.contrib.layers.fully_connected applies a ReLU non-linarity here by default
         final_reps = tf.contrib.layers.fully_connected(layer2_reps, num_outputs=self.FLAGS.hidden_size) # blended_reps_final is shape (batch_size, context_len, hidden_size)
+        #final_reps = layer2_reps
 
         # Use softmax layer to compute probability distribution for start location
         # Note this produces self.logits_start and self.probdist_start, both of which have shape (batch_size, context_len)
@@ -171,6 +169,8 @@ class QAModel(object):
         # Use softmax layer to compute probability distribution for end location
         # Note this produces self.logits_end and self.probdist_end, both of which have shape (batch_size, context_len)
         with vs.variable_scope("EndDist"):
+            #encoder = RNNEncoder(self.FLAGS.hidden_size, self.keep_prob)
+            #end_hiddens = encoder.build_graph(final_reps, self.context_mask) # (batch_size, context_len, hidden_size*2)
             softmax_end = SimpleSoftmaxLayer()
             self.logits_end, self.probdist_end = softmax_end.build_graph(final_reps, self.context_mask)
 
@@ -311,12 +311,51 @@ class QAModel(object):
         """
         # Get start_dist and end_dist, both shape (batch_size, context_len)
         start_dist, end_dist = self.get_prob_dists(session, batch)
+        
+        start_pos = []
+        end_pos = []
+        for i in range(batch.context_ids.shape[0]):
+            start_prob = []
+            start_id = []
+            end_prob = []
+            end_id = []
+            j = 0
+            biggest = -1.0
+            while j < self.FLAGS.context_len:
+                new = start_dist[i, j]
+                if new > biggest:
+                    biggest = new
+                    start_prob.append(new)
+                    start_id.append(j)
+                else:
+                    start_prob.append(biggest)
+                    start_id.append(start_id[-1])
+                j += 1
+            biggest = -1.0
+            j = self.FLAGS.context_len - 1
+            while j >= 0:
+                new = end_dist[i, j]
+                if new > biggest:
+                    biggest = new
+                    end_prob.append(new)
+                    end_id.append(j)
+                else:
+                    end_prob.append(biggest)
+                    end_id.append(end_id[-1])
+                j -= 1
+            end_prob = list(reversed(end_prob))
+            end_id = list(reversed(end_id))
+            prob = [s * e for (s, e) in zip(start_prob, end_prob)]
+            ind = np.argmax(prob)
+            start_pos.append(start_id[ind])
+            end_pos.append(end_id[ind])
+        #prob = np.matmul(np.expand_dims(start_dist, axis=2), np.expand_dims(end_dist, axis=1))
 
         # Take argmax to get start_pos and end_post, both shape (batch_size)
-        start_pos = np.argmax(start_dist, axis=1)
-        end_pos = np.argmax(end_dist, axis=1)
+        #start_pos = np.argmax(start_dist, axis=1)
+        #end_pos = np.argmax(end_dist, axis=1)
 
-        return start_pos, end_pos
+        return np.array(start_pos), np.array(end_pos)
 
 
     def get_dev_loss(self, session, dev_context_path, dev_qn_path, dev_ans_path):

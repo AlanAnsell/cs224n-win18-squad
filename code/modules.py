@@ -283,7 +283,8 @@ class BDAttn(object):
             print('beta_dist', beta_dist.shape)
             beta = tf.matmul(tf.expand_dims(beta_dist, axis=1), keys)
             print('beta', beta.shape)
-            
+           
+            #beta_info = tf.stack([m, beta_dist], axis=2)
             output = tf.concat([alpha, keys * alpha, keys * beta], axis=2)
 
             print(output.shape)
