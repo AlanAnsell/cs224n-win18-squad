@@ -295,6 +295,41 @@ class BDAttn(object):
             return output
 
 
+def char_encoder(char_embeddings, sentence_len, word_len, filter_width, embedding_size, n_filters):
+    with tf.variable_scope('conv'):
+        char_embeddings = tf.reshape(char_embeddings, (-1, word_len, embedding_size))
+        weights = tf.get_variable('weights', shape=(filter_width, embedding_size, n_filters),
+                                  dtype=tf.float32, initializer=tf.random_normal_initializer())
+        print(weights)
+        encoding = tf.nn.conv1d(char_embeddings, weights, stride=1, padding='VALID')
+        print 'Encoding after conv1d:'
+        print encoding
+        encoding = tf.layers.max_pooling1d(encoding, word_len - filter_width + 1, strides=1)
+        print 'Encoding after max pooling:'
+        print encoding
+        encoding = tf.squeeze(encoding, [1])
+        print 'Encoding after squeeze:'
+        print encoding
+        encoding = tf.reshape(encoding, (-1, sentence_len, n_filters))
+        print(encoding)
+    return encoding, weights
+
+
+def char_encoder2(char_embeddings, sentence_len, word_len, filter_width, embedding_size, n_filters):
+    with tf.variable_scope('conv'):
+        #char_embeddings = tf.reshape(char_embeddings, (-1, word_len, embedding_size))
+        weights = tf.get_variable('weights', shape=(1, filter_width, embedding_size, n_filters),
+                                  dtype=tf.float32, initializer=tf.contrib.layers.xavier_initializer())
+        biases = tf.get_variable('biases', shape=(1, 1, 1, n_filters), dtype=tf.float32,
+                                 initializer=tf.zeros_initializer())
+        print(weights)
+        encoding = tf.nn.conv2d(char_embeddings, weights, strides=[1, 1, 1, 1], padding='VALID')
+        print 'Encoding after conv1d:'
+        print encoding
+        encoding = tf.reduce_max(tf.nn.relu(encoding + biases), 2)
+    return encoding, weights
+
+
 def masked_softmax(logits, mask, dim):
     """
     Takes masked softmax over given dimension of logits.

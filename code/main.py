@@ -26,8 +26,9 @@ import logging
 import tensorflow as tf
 
 from qa_model import QAModel
-from vocab import get_glove
+from vocab import get_glove, get_char_ids
 from official_eval_helper import get_json_data, generate_answers
+from data_batcher import label_chars
 
 
 logging.basicConfig(level=logging.INFO)
@@ -51,7 +52,11 @@ tf.app.flags.DEFINE_integer("batch_size", 100, "Batch size to use")
 tf.app.flags.DEFINE_integer("hidden_size", 200, "Size of the hidden states")
 tf.app.flags.DEFINE_integer("context_len", 600, "The maximum context length of your model")
 tf.app.flags.DEFINE_integer("question_len", 30, "The maximum question length of your model")
+tf.app.flags.DEFINE_integer("word_len", 20, "The maximum word length of your model")
 tf.app.flags.DEFINE_integer("embedding_size", 100, "Size of the pretrained word vectors. This needs to be one of the available GloVe dimensions: 50/100/200/300")
+tf.app.flags.DEFINE_integer("char_embedding_size", 20, "Size of the character embeddings")
+tf.app.flags.DEFINE_integer("n_cnn_filters", 100, "Number of CNN filters for character-level word encodings")
+tf.app.flags.DEFINE_integer("cnn_filter_width", 5, "Width of CNN filters for character-level word encodings")
 tf.app.flags.DEFINE_integer("n_variable_embeddings", 1000, "Number of most frequent word vectors to backpropagate into")
 
 # How often to print, save, eval
@@ -63,6 +68,7 @@ tf.app.flags.DEFINE_integer("keep", 1, "How many checkpoints to keep. 0 indicate
 # Reading and saving data
 tf.app.flags.DEFINE_string("train_dir", "", "Training directory to save the model parameters and other info. Defaults to experiments/{experiment_name}")
 tf.app.flags.DEFINE_string("glove_path", "", "Path to glove .txt file. Defaults to data/glove.6B.{embedding_size}d.txt")
+tf.app.flags.DEFINE_string("char_path", "", "Path to recognised characters file. Defaults to data/chars.txt")
 tf.app.flags.DEFINE_string("data_dir", DEFAULT_DATA_DIR, "Where to find preprocessed SQuAD data for training. Defaults to data/")
 tf.app.flags.DEFINE_string("ckpt_load_dir", "", "For official_eval mode, which directory to load the checkpoint fron. You need to specify this for official_eval mode.")
 tf.app.flags.DEFINE_string("json_in_path", "", "For official_eval mode, path to JSON input file. You need to specify this for official_eval_mode.")
@@ -121,9 +127,11 @@ def main(unused_argv):
 
     # Define path for glove vecs
     FLAGS.glove_path = FLAGS.glove_path or os.path.join(DEFAULT_DATA_DIR, "glove.6B.{}d.txt".format(FLAGS.embedding_size))
+    FLAGS.char_path = FLAGS.char_path or os.path.join(DEFAULT_DATA_DIR, 'chars.txt')
 
     # Load embedding matrix and vocab mappings
     emb_matrix, word2id, id2word = get_glove(FLAGS.glove_path, FLAGS.embedding_size)
+    char2id = get_char_ids(FLAGS.char_path)
 
     # Get filepaths to train/dev datafiles for tokenized queries, contexts and answers
     train_context_path = os.path.join(FLAGS.data_dir, "train.context")
@@ -134,7 +142,7 @@ def main(unused_argv):
     dev_ans_path = os.path.join(FLAGS.data_dir, "dev.span")
 
     # Initialize model
-    qa_model = QAModel(FLAGS, id2word, word2id, emb_matrix)
+    qa_model = QAModel(FLAGS, id2word, word2id, char2id, emb_matrix)
 
     # Some GPU settings
     config=tf.ConfigProto()
@@ -192,7 +200,7 @@ def main(unused_argv):
 
             # Get a predicted answer for each example in the data
             # Return a mapping answers_dict from uuid to answer
-            answers_dict = generate_answers(sess, qa_model, word2id, qn_uuid_data, context_token_data, qn_token_data)
+            answers_dict = generate_answers(sess, qa_model, word2id, char2id, qn_uuid_data, context_token_data, qn_token_data)
 
             # Write the uuid->answer mapping a to json file in root dir
             print "Writing predictions to %s..." % FLAGS.json_out_path
@@ -200,7 +208,8 @@ def main(unused_argv):
                 f.write(unicode(json.dumps(answers_dict, ensure_ascii=False)))
                 print "Wrote predictions to %s" % FLAGS.json_out_path
 
-
+    elif FLAGS.mode == 'label_chars':
+        print '\n'.join(label_chars(word2id, train_context_path, train_qn_path, train_ans_path, FLAGS.batch_size, FLAGS.context_len, FLAGS.question_len, False))
     else:
         raise Exception("Unexpected value of FLAGS.mode: %s" % FLAGS.mode)
 

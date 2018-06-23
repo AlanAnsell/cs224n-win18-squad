@@ -26,7 +26,8 @@ _UNK = b"<unk>"
 _START_VOCAB = [_PAD, _UNK]
 PAD_ID = 0
 UNK_ID = 1
-
+PAD_CHAR_ID = 0
+PAD_UNK_ID = 1
 
 def get_glove(glove_path, glove_dim):
     """Reads from original GloVe .txt file and returns embedding matrix and
@@ -82,3 +83,9 @@ def get_glove(glove_path, glove_dim):
     assert idx == final_vocab_size
 
     return emb_matrix, word2id, id2word
+
+
+def get_char_ids(char_path):
+    with open(char_path, 'r') as f:
+        return {line.strip(): n + 2 for n, line in enumerate(f)}
+
