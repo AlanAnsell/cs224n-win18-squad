@@ -238,7 +238,7 @@ class BDAttn(object):
         self.key_vec_size = key_vec_size
         self.value_vec_size = value_vec_size
 
-    def build_graph(self, values, values_mask, keys, keys_mask):
+    def build_graph(self, values, values_mask, keys, keys_mask, q2c=True):
         """
         Keys attend to values.
         For each key, return an attention distribution and an attention output vector.
@@ -271,23 +271,19 @@ class BDAttn(object):
             weighted_keys = tf.expand_dims(tf.reduce_sum(keys * w_keys, axis=2), axis=2)
             weighted_values = tf.expand_dims(tf.reduce_sum(values * w_values, axis=2), axis=1)
             S = weighted_prod + weighted_keys + weighted_values
-            print('S', S.shape)
 
             attn_mask = tf.expand_dims(values_mask, 1) # shape (batch_size, 1, num_values)
             _, alpha_dist = masked_softmax(S, attn_mask, 2) # shape (batch_size, num_keys, num_values). take softmax over values
             alpha = tf.matmul(alpha_dist, values)
-            print('alpha', alpha.shape)
 
-            m = tf.reduce_max(tf.add(S, (1 - tf.cast(attn_mask, 'float')) * (-1e30)), axis=2)
-            _, beta_dist = masked_softmax(m, keys_mask, 1)
-            print('beta_dist', beta_dist.shape)
-            beta = tf.matmul(tf.expand_dims(beta_dist, axis=1), keys)
-            print('beta', beta.shape)
-           
-            #beta_info = tf.stack([m, beta_dist], axis=2)
-            output = tf.concat([alpha, keys * alpha, keys * beta], axis=2)
-
-            print(output.shape)
+            if q2c:
+                m = tf.reduce_max(tf.add(S, (1 - tf.cast(attn_mask, 'float')) * (-1e30)), axis=2)
+                _, beta_dist = masked_softmax(m, keys_mask, 1)
+                beta = tf.matmul(tf.expand_dims(beta_dist, axis=1), keys)
+               
+                output = tf.concat([alpha, keys * alpha, keys * beta], axis=2)
+            else:
+                output = tf.concat([alpha, keys * alpha], axis=2)
 
             # Apply dropout
             output = tf.nn.dropout(output, self.keep_prob)

@@ -55,7 +55,9 @@ def evaluate(dataset, predictions):
     f1 = exact_match = total = 0
     for article in dataset:
         for paragraph in article['paragraphs']:
+            print(paragraph['context'].encode('utf-8'))
             for qa in paragraph['qas']:
+                print(qa['question'].encode('utf-8'))
                 total += 1
                 if qa['id'] not in predictions:
                     message = 'Unanswered question ' + qa['id'] + \
@@ -63,7 +65,10 @@ def evaluate(dataset, predictions):
                     print(message, file=sys.stderr)
                     continue
                 ground_truths = list(map(lambda x: x['text'], qa['answers']))
+                for g in ground_truths:
+                    print(g.encode('utf-8'))
                 prediction = predictions[qa['id']]
+                print(prediction.encode('utf-8'))
                 exact_match += metric_max_over_ground_truths(
                     exact_match_score, prediction, ground_truths)
                 f1 += metric_max_over_ground_truths(

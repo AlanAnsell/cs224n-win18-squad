@@ -61,6 +61,7 @@ tf.app.flags.DEFINE_integer("n_variable_embeddings", 1000, "Number of most frequ
 
 tf.app.flags.DEFINE_boolean('use_char_cnn', True, 'Whether to use character-level CNN encoding')
 tf.app.flags.DEFINE_boolean('use_prob_product_prediction', True, 'Whether to predict using the (start, end) index pair with highest probability product')
+tf.app.flags.DEFINE_boolean('use_q2c_attention', True, 'Whether to use the query-to-context component of bidirectional attention flow')
 
 # How often to print, save, eval
 tf.app.flags.DEFINE_integer("print_every", 1, "How many iterations to do per print.")
@@ -109,9 +110,6 @@ def initialize_model(session, model, train_dir, expect_exists):
 
 
 def main(unused_argv):
-    print 'Use CNN:' + str(FLAGS.use_char_cnn)
-    print 'Use product pred:' + str(FLAGS.use_prob_product_prediction)
-    
     # Print an error message if you've entered flags incorrectly
     if len(unused_argv) != 1:
         raise Exception("There is a problem with how you entered flags: %s" % unused_argv)

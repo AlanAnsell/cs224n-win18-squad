@@ -168,7 +168,7 @@ class QAModel(object):
             question_hiddens = encoder.build_graph(joined_qn_embs, self.qn_mask) # (batch_size, question_len, hidden_size*2)
 
         attn_layer = BDAttn(self.keep_prob, self.FLAGS.hidden_size*2, self.FLAGS.hidden_size*2)
-        attn_output = attn_layer.build_graph(question_hiddens, self.qn_mask, context_hiddens, self.context_mask) # attn_output is shape (batch_size, context_len, hidden_size*6)
+        attn_output = attn_layer.build_graph(question_hiddens, self.qn_mask, context_hiddens, self.context_mask, q2c=self.FLAGS.use_q2c_attention) # attn_output is shape (batch_size, context_len, hidden_size*6)
         blended_reps = tf.concat([context_hiddens, attn_output], axis=2) # (batch_size, context_len, hidden_size*8)
         # Use context hidden states to attend to question hidden states
         #attn_layer = BasicAttn(self.keep_prob, self.FLAGS.hidden_size*2, self.FLAGS.hidden_size*2)
