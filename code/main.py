@@ -59,6 +59,9 @@ tf.app.flags.DEFINE_integer("n_cnn_filters", 100, "Number of CNN filters for cha
 tf.app.flags.DEFINE_integer("cnn_filter_width", 5, "Width of CNN filters for character-level word encodings")
 tf.app.flags.DEFINE_integer("n_variable_embeddings", 1000, "Number of most frequent word vectors to backpropagate into")
 
+tf.app.flags.DEFINE_boolean('use_char_cnn', True, 'Whether to use character-level CNN encoding')
+tf.app.flags.DEFINE_boolean('use_prob_product_prediction', True, 'Whether to predict using the (start, end) index pair with highest probability product')
+
 # How often to print, save, eval
 tf.app.flags.DEFINE_integer("print_every", 1, "How many iterations to do per print.")
 tf.app.flags.DEFINE_integer("save_every", 500, "How many iterations to do per save.")
@@ -106,6 +109,9 @@ def initialize_model(session, model, train_dir, expect_exists):
 
 
 def main(unused_argv):
+    print 'Use CNN:' + str(FLAGS.use_char_cnn)
+    print 'Use product pred:' + str(FLAGS.use_prob_product_prediction)
+    
     # Print an error message if you've entered flags incorrectly
     if len(unused_argv) != 1:
         raise Exception("There is a problem with how you entered flags: %s" % unused_argv)

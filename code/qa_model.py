@@ -141,19 +141,23 @@ class QAModel(object):
           self.probdist_start, self.probdist_end: Both shape (batch_size, context_len). Each row sums to 1.
             These are the result of taking (masked) softmax of logits_start and logits_end.
         """
-        with vs.variable_scope('char_encoding'):
-            self.context_char_encodings, self.cnn_filters1 = char_encoder2(self.context_char_embs, self.FLAGS.context_len, self.FLAGS.word_len,
-                                                                self.FLAGS.cnn_filter_width, self.FLAGS.char_embedding_size, self.FLAGS.n_cnn_filters)
-            #self.context_char_encodings = tf.nn.dropout(self.context_char_encodings, self.keep_prob)
-            tf.get_variable_scope().reuse_variables()
-            self.qn_char_encodings, self.cnn_filters2 = char_encoder2(self.qn_char_embs, self.FLAGS.question_len, self.FLAGS.word_len,
-                                                           self.FLAGS.cnn_filter_width, self.FLAGS.char_embedding_size, self.FLAGS.n_cnn_filters)
-            #self.qn_char_encodings = tf.nn.dropout(self.qn_char_encodings, self.keep_prob)
-        
-        joined_context_embs = tf.concat([self.context_embs, self.context_char_encodings], axis=2) 
-        joined_qn_embs = tf.concat([self.qn_embs, self.qn_char_encodings], axis=2)
-        assert joined_context_embs.shape[2] == self.FLAGS.embedding_size + self.FLAGS.n_cnn_filters
-        assert joined_qn_embs.shape[2] == self.FLAGS.embedding_size + self.FLAGS.n_cnn_filters
+        if self.FLAGS.use_char_cnn:
+            with vs.variable_scope('char_encoding'):
+                self.context_char_encodings, self.cnn_filters1 = char_encoder2(self.context_char_embs, self.FLAGS.context_len, self.FLAGS.word_len,
+                                                                    self.FLAGS.cnn_filter_width, self.FLAGS.char_embedding_size, self.FLAGS.n_cnn_filters)
+                #self.context_char_encodings = tf.nn.dropout(self.context_char_encodings, self.keep_prob)
+                tf.get_variable_scope().reuse_variables()
+                self.qn_char_encodings, self.cnn_filters2 = char_encoder2(self.qn_char_embs, self.FLAGS.question_len, self.FLAGS.word_len,
+                                                               self.FLAGS.cnn_filter_width, self.FLAGS.char_embedding_size, self.FLAGS.n_cnn_filters)
+                #self.qn_char_encodings = tf.nn.dropout(self.qn_char_encodings, self.keep_prob)
+            
+            joined_context_embs = tf.concat([self.context_embs, self.context_char_encodings], axis=2) 
+            joined_qn_embs = tf.concat([self.qn_embs, self.qn_char_encodings], axis=2)
+            assert joined_context_embs.shape[2] == self.FLAGS.embedding_size + self.FLAGS.n_cnn_filters
+            assert joined_qn_embs.shape[2] == self.FLAGS.embedding_size + self.FLAGS.n_cnn_filters
+        else:
+            joined_context_embs = self.context_embs
+            joined_qn_embs = self.qn_embs
 
         # Use a RNN to get hidden states for the context and the question
         # Note: here the RNNEncoder is shared (i.e. the weights are the same)
@@ -338,51 +342,53 @@ class QAModel(object):
         """
         # Get start_dist and end_dist, both shape (batch_size, context_len)
         start_dist, end_dist = self.get_prob_dists(session, batch)
-        
-        start_pos = []
-        end_pos = []
-        for i in range(batch.context_ids.shape[0]):
-            start_prob = []
-            start_id = []
-            end_prob = []
-            end_id = []
-            j = 0
-            biggest = -1.0
-            while j < self.FLAGS.context_len:
-                new = start_dist[i, j]
-                if new > biggest:
-                    biggest = new
-                    start_prob.append(new)
-                    start_id.append(j)
-                else:
-                    start_prob.append(biggest)
-                    start_id.append(start_id[-1])
-                j += 1
-            biggest = -1.0
-            j = self.FLAGS.context_len - 1
-            while j >= 0:
-                new = end_dist[i, j]
-                if new > biggest:
-                    biggest = new
-                    end_prob.append(new)
-                    end_id.append(j)
-                else:
-                    end_prob.append(biggest)
-                    end_id.append(end_id[-1])
-                j -= 1
-            end_prob = list(reversed(end_prob))
-            end_id = list(reversed(end_id))
-            prob = [s * e for (s, e) in zip(start_prob, end_prob)]
-            ind = np.argmax(prob)
-            start_pos.append(start_id[ind])
-            end_pos.append(end_id[ind])
-        #prob = np.matmul(np.expand_dims(start_dist, axis=2), np.expand_dims(end_dist, axis=1))
+       
+        if self.FLAGS.use_prob_product_prediction:
+            start_pos = []
+            end_pos = []
+            for i in range(batch.context_ids.shape[0]):
+                start_prob = []
+                start_id = []
+                end_prob = []
+                end_id = []
+                j = 0
+                biggest = -1.0
+                while j < self.FLAGS.context_len:
+                    new = start_dist[i, j]
+                    if new > biggest:
+                        biggest = new
+                        start_prob.append(new)
+                        start_id.append(j)
+                    else:
+                        start_prob.append(biggest)
+                        start_id.append(start_id[-1])
+                    j += 1
+                biggest = -1.0
+                j = self.FLAGS.context_len - 1
+                while j >= 0:
+                    new = end_dist[i, j]
+                    if new > biggest:
+                        biggest = new
+                        end_prob.append(new)
+                        end_id.append(j)
+                    else:
+                        end_prob.append(biggest)
+                        end_id.append(end_id[-1])
+                    j -= 1
+                end_prob = list(reversed(end_prob))
+                end_id = list(reversed(end_id))
+                prob = [s * e for (s, e) in zip(start_prob, end_prob)]
+                ind = np.argmax(prob)
+                start_pos.append(start_id[ind])
+                end_pos.append(end_id[ind])
+            start_pos = np.array(start_pos)
+            end_pos = np.array(end_pos)
+        else:
+            # Take argmax to get start_pos and end_post, both shape (batch_size)
+            start_pos = np.argmax(start_dist, axis=1)
+            end_pos = np.argmax(end_dist, axis=1)
 
-        # Take argmax to get start_pos and end_post, both shape (batch_size)
-        #start_pos = np.argmax(start_dist, axis=1)
-        #end_pos = np.argmax(end_dist, axis=1)
-
-        return np.array(start_pos), np.array(end_pos)
+        return start_pos, end_pos 
 
 
     def check_convolution(self, sess, batch):
